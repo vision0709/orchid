@@ -1,9 +1,10 @@
 from sys import argv
-from time import sleep
+from logging import basicConfig, DEBUG
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QObject, QThread, QRect
-from orchid.anther import WindowManager
-from orchid.sepal import ActionArea, SettingsArea
+from PyQt5.QtCore import QObject, QThread
+from orchid.xsys import WindowManager
+from orchid.widgets.areas import ActionArea, SettingsArea
+from orchid.utils.theme import Themer
 
 
 class DesktopEnvironment(QObject):
@@ -13,9 +14,20 @@ class DesktopEnvironment(QObject):
 
     def __init__(self) -> None:
         """
-        Creates the WindowManager, ActionArea, and SettingsArea.
+        Creates the :class:`WindowManager`, :class:`ActionArea`, and :class:`SettingsArea`. This also themes the whole
+        app based on the theme file and configures the loggers.
         """
-        self._app = QApplication(argv)
+        self._app = QApplication(argv)  # Create the Qt app.
+
+        # Configure loggers.
+        basicConfig(level=DEBUG)
+
+        # Theme the application.
+        Themer().apply_theme()
+
+        # Create the system areas before the window manager so we don't have to worry about it centering them.
+        self._action_area = ActionArea()  # Create the top panel.
+        self._settings_area = SettingsArea()  # Create the side panel.
 
         # Create the window manager.
         self._wm_thread = QThread()
@@ -24,19 +36,6 @@ class DesktopEnvironment(QObject):
         self._wm_thread.started.connect(self._wm.run)
         self._wm.start()
         self._wm_thread.start()
-
-        # Give the window manager time to start up.
-        sleep(1)
-
-        # Create the top panel.
-        self._top_panel = ActionArea()
-        self._top_panel.setGeometry(QRect(0, 0, self._wm.get_screen_width(), self._wm.get_screen_height() * .08))
-        self._top_panel.show()
-
-        # Create the side panel.
-        self._side_panel = SettingsArea()
-        self._side_panel.setGeometry(QRect(0, self._wm.get_screen_height() * .03, self._wm.get_screen_width() * .03, self._wm.get_screen_height()))
-        self._side_panel.show()
 
     def run(self) -> int:
         """

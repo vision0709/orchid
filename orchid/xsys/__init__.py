@@ -1,9 +1,10 @@
-from PyQt5.QtCore import QObject
 from os import environ
+from logging import getLogger
+from PyQt5.QtCore import QObject
+from PyQt5.QtWidgets import QApplication
 from Xlib.display import Display
 from Xlib.X import SubstructureRedirectMask, MapRequest, KeyPress, RevertToParent, CurrentTime, Above
 from Xlib.error import ConnectionClosedError, BadAccess
-from orchid.utils.Geometry import Bounds
 
 
 class WindowManager(QObject):
@@ -17,25 +18,21 @@ class WindowManager(QObject):
         """
         super().__init__()
         display_num = environ.get("DISPLAY")
-        print("Using display", display_num)
         if not display_num:
             display_num = ":0"
 
+        # Create a logger.
+        # TODO: Add a file handler and formatter.
+        self._logger = getLogger(__name__)
         self._display = Display(display_num)  # Create the connection to the X server.
-        self._default_screen = self._display.screen()  # Get the default screen.
 
         # Take control of window management on the default screen.
+        # TODO: Manage more than just the default screen.
+        # TODO: Manage more than just the mapping events.
         try:
-            # TODO: Manage more than just the default screen.
-            self._default_screen.root.change_attributes(event_mask=SubstructureRedirectMask)
-            print("Control of default root window gained")
+            self._display.screen().root.change_attributes(event_mask=SubstructureRedirectMask)
         except BadAccess as error:
-            print("Error")
-
-        # Calculate window bounds on the screen.
-        screen_width = self._default_screen.width_in_pixels
-        screen_height = self._default_screen.height_in_pixels
-        self._default_screen_bounds = Bounds(screen_width * .02, screen_width, screen_height * .1, screen_height)
+            print("Access error:", error)
 
         self.is_running = False
 
@@ -53,8 +50,10 @@ class WindowManager(QObject):
 
     def run(self) -> None:
         """
-        The main loop of the Window Manager.
+        The main loop of the WindowManager.
         """
+        screen_geometry = QApplication.desktop().screenGeometry()
+
         try:
             while self.is_running:
                 if self._display.pending_events() > 0:  # Check if there are any pending events in the queue.
@@ -63,35 +62,15 @@ class WindowManager(QObject):
                         print("Got a key press event!")
                     elif event.type == MapRequest:
                         print("Got a map request event!")
-                        x = self._default_screen_bounds.center.x - event.window.get_geometry().width / 2
-                        y = self._default_screen_bounds.center.y - event.window.get_geometry().height / 2
-                        print(int(x), " x ", int(y))
-                        event.window.configure(x=int(x) - 1, y=int(y) - 1, border_width=2,
-                                               stack_mode=Above)  # Place the window where we want it.
-
-                        event.window.map()
+                        x = screen_geometry.center().x() - event.window.get_geometry().width / 2
+                        y = screen_geometry.center().y() - event.window.get_geometry().height / 2
+                        event.window.configure(x=int(x), y=int(y), border_width=0, stack_mode=Above)  # Place the window where we want it.
+                        event.window.map()  # Draw the window on the screen.
                         event.window.set_input_focus(RevertToParent, CurrentTime)  # Focus window
                     else:
                         print("Got an unknown event!")
+                        print(event)
         except ConnectionClosedError as error:
             print("Connection closed:", error)
         except KeyboardInterrupt as error:
             print("Closing due to keyboard interrupt")
-
-    def get_screen_width(self) -> float:
-        """
-        Returns the width of the screen in pixels.
-
-        :return: The width of the screen in pixels.
-        :rtype: float
-        """
-        return self._default_screen_bounds.right
-
-    def get_screen_height(self) -> float:
-        """
-        Returns the height of the screen in pixels.
-
-        :return: The height of the screen in pixels.
-        :rtype: float
-        """
-        return self._default_screen_bounds.bottom

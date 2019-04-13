@@ -1,0 +1,24 @@
+{
+  "name": "Default Theme",
+  "colors": {
+    "window": "#2E2E2E",
+    "windowtext": "#CDC8C0",
+    "base": "#1F1F1F",
+    "altbase": "#1A1A1B",
+    "button": "#555555",
+    "buttontext": "#CDC8C0",
+    "tooltipbase": "#1F1F1F",
+    "tooltiptext": "#CDC8C0",
+    "text": "#CDC8C0",
+    "brighttext": "#030303",
+    "light": "#FAFAFA",
+    "midlight": "#F8F8F8",
+    "mid": "#F4F4F4",
+    "dark": "#F0F0F0",
+    "shadow": "#000000",
+    "highlight": "#0190F5",
+    "highlightedtext": "#CDC8C0",
+    "link": "#0190F5",
+    "linkvisited": "#004F87"
+  }
+}
