@@ -37,7 +37,7 @@ class _FileManager:
         """
         Verifies and creates all of the files for :module:`orchid`.
         """
-        self.theme_file = join("..", "themes", "default.json")  # join(Path.home(), ".orchid", "themes", "default.json")
+        self.theme_file = join(Path.home(), ".orchid", "themes", "default.json")
 
         if not exists(dirname(self.theme_file)):
             mkdir(dirname(self.theme_file))

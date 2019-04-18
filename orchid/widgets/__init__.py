@@ -2,14 +2,6 @@ from logging import getLogger
 from PyQt5.QtWidgets import QWidget
 
 
-class Constants:
-    """
-    Constant values commonly used in :module:`widgets`.
-    """
-    PERCENT_WIDTH = .03
-    PERCENT_HEIGHT = .08
-
-
 class LogWidget(QWidget):
     """
     A normal :class:`QWidget` with a logger already in it.
