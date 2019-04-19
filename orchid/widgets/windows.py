@@ -68,7 +68,6 @@ class DesktopWindow:
     def _on_load_progress_finished(self, status: bool) -> None:
         print("Loaded:", status)
 
-
     @staticmethod
     def show() -> None:
         """
