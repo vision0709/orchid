@@ -41,7 +41,9 @@ class DesktopEnvironment(QObject):
         self._desktop.show()
 
         # Show the start page.
-        self._desktop.add_widget(QWebEngineView(QUrl("https://www.google.com")))
+        web_view = QWebEngineView()
+        self._desktop.add_tab(web_view)
+        web_view.load(QUrl("https://www.google.com"))
 
         # Create the window manager.
         #self._wm_thread = QThread()
