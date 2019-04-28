@@ -1,8 +1,9 @@
 from typing import Union
-from PyQt5.QtWidgets import QMainWindow, QWidget, QTabWidget, QTabBar
-from PyQt5.QtCore import Qt
-from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtCore import Qt, QUrl, QRect
+from PyQt5.QtWidgets import QMainWindow, QWidget, QTabWidget, QTabBar, QLineEdit, QAction, QSizePolicy, QVBoxLayout
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from orchid.widgets.bars import SearchBar, BookmarksBar, SideBar
+from orchid.widgets.web import WebView, WebPage
 
 
 class DesktopWindow:
@@ -46,11 +47,14 @@ class DesktopWindow:
 
             # Set an appropriate title.
             if not title and not widget.windowTitle():
-                title = "Untitled"
+                title = self.tr("Untitled")
             else:
                 title = widget.windowTitle()
 
             central_widget.addTab(widget, title)  # Add the widget to a new tab.
+
+    def add_background_tab(self) -> None:
+        """"""
 
     @staticmethod
     def get_central_widget() -> QTabWidget:
@@ -123,3 +127,81 @@ class _DesktopWindow(QMainWindow):
         # Create the side bar.
         settings_area = SideBar(self)
         self.addToolBar(Qt.LeftToolBarArea, settings_area)
+
+
+class PopupWindow(QWidget):
+    """
+    A :class:`QWidget` popup to display a :class:`WebPage`'s request for a new popup window.
+    """
+
+    def __init__(self, profile: QWebEngineProfile) -> None:
+        """
+        Creates the :class:`PopupWindow`, initializes its web view, action, and URL, and listens for changes in the
+        children of the popup.
+
+        :param profile:
+        """
+        super().__init__()
+
+        # Configure the popup.
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+
+        # Add a layout to the popup.
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+
+        # Create the popup's action.
+        action = QAction(self)
+
+        # Create the URL text box.
+        self._url_text_box = QLineEdit(self)
+        self._url_text_box.setReadOnly(True)
+        self._url_text_box.addAction(action, QLineEdit.LeadingPosition)
+        layout.addWidget(self._url_text_box)
+
+        # Create the web view.
+        self._web_view = WebView(self)
+        self._web_view.setPage(WebPage(profile, self._web_view))
+        layout.addWidget(self._web_view)
+
+        self._web_view.setFocus()
+
+        # Listen for signals from the popup's widgets.
+        self._web_view.titleChanged.connect(self.setWindowTitle)
+        self._web_view.urlChanged.connect(self._on_url_changed)
+        self._web_view.signal_favicon_changed(action.setIcon)
+        self._web_view.page().geometryChangeRequested.connect(self._on_geometry_change_requested)
+        self._web_view.page().windowCloseRequested.connect(self.close)
+
+    def _on_url_changed(self, url: QUrl) -> None:
+        """
+        Shows the given :class:`QUrl` in the text box of this :class:`PopupWindow`.
+
+        :param url: The :class:`QUrl` to show in the popup.
+        :type url: QUrl
+        """
+        self._url_text_box.setText(url.toDisplayString())
+
+    def _on_geometry_change_requested(self, geometry: QRect) -> None:
+        """
+        Updates this window's geometry whenever the child page's geometry updates.
+
+        :param geometry: The new geometry to update the :class:`PopupWindow` with.
+        :type geometry: QRect
+        """
+        window = self.windowHandle()
+        if window is not None:
+            self.setGeometry(geometry.marginsRemoved(window.frameMargins()))
+        self.show()
+        self._web_view.setFocus()
+
+    def get_web_view(self) -> WebView:
+        """
+        Returns this :class:`PopupWindow`'s :class:`WebView`.
+
+        :return: The :class:`WebView` for this :class:`PopupWindow`.
+        :rtype: WebView
+        """
+        return self._web_view

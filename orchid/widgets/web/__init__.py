@@ -1,8 +1,11 @@
-from PyQt5.QtCore import Qt, QObject, QUrl
-from PyQt5.QtWidgets import QWidget, QDialog, QMessageBox
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QUrl
+from PyQt5.QtWidgets import QWidget, QDialog, QMessageBox, QStyle, QAction
+from PyQt5.QtGui import QIcon, QContextMenuEvent
 from PyQt5.QtWebEngine import QWebEngineRegisterProtocolHandlerRequest, QWebEngineClientCertificateSelection
 from PyQt5.QtWebEngineWidgets import QWebEngineProfile, QWebEngineView, QWebEnginePage, QWebEngineCertificateError
+from PyQt5.QtWebEngineWidgets.QWebEnginePage import WebAction, RenderProcessTerminationStatus, WebWindowType
 from PyQt5.QtNetwork import QAuthenticator
+from orchid.widgets.windows import DesktopWindow, PopupWindow
 
 
 class WebPage(QWebEnginePage):
@@ -141,16 +144,236 @@ class WebPage(QWebEnginePage):
 
 
 class WebView(QWebEngineView):
-    """"""
+    """
+    A :class:`QWebEngineView` that displays a :class:`WebPage` on the screen.
+    """
+
+    signal_webaction_state_changed = pyqtSignal(WebAction, bool)
+    signal_favicon_changed = pyqtSignal(QIcon)
+    signal_dev_tools_requested = pyqtSignal(WebPage)
 
     def __init__(self, parent: QWidget = None) -> None:
         """
-        Creates the :class:`WebView` with...
+        Creates the :class:`WebView` with a 100 percent load status. Also, connects signals for custom behaviors.
+
         :param parent: An optional :class:`QWidget` parent for this view.
+        :type parent: QWidget
         """
         super().__init__(parent)
+        self._load_progress = 100
+        self.loadStarted.connect(self._on_load_started)
+        self.loadProgress.connect(self._on_load_progress_changed)
+        self.loadFinished.connect(self._on_load_finished)
+        self.iconChanged.connect(self._on_favicon_changed)
+        self.renderProcessTerminated.connect(self._on_render_process_terminated)
+
+    def _on_load_started(self) -> None:
+        """
+        Resets load progress to zero and notifies listeners of a favicon change.
+        """
+        self._load_progress = 0
+        # TODO: Do I need this?
+        #self.signal_favicon_changed.emit(self.get_icon())
+
+    def _on_load_progress_changed(self, progress: int) -> None:
+        """
+        Updates the load progress with the given progress.
+
+        :param progress: The percent from 0 to 100 of the :class:`WebPage` in this :class:`WebView` that is loaded.
+        :type progress: int
+        """
+        self._load_progress = progress
+
+    def _on_load_finished(self, success: bool) -> None:
+        """
+        Updates the load progress to 100 if the load was a success or -1 if it was a failure.
+
+        :param success: The load state of the :class:`WebPage`. If this is True then the load percent is 100.
+        :type success: bool
+        """
+        self._load_progress = 100 if success else -1
+        # TODO: Do I need this?
+        # self.signal_favicon_changed.emit(self.get_icon())
+
+    def _on_favicon_changed(self, icon: QIcon) -> None:
+        """
+        Notifies listeners of a favicon change.
+
+        :param icon: The new favicon for the :class:`WebView`.
+        :type icon: QIcon
+        """
+        self.signal_favicon_changed.emit(self.get_icon())
+
+    def _on_render_process_terminated(self, status: RenderProcessTerminationStatus, status_code: int) -> None:
+        """
+        Shows the user a notification that the page failed to load and checks if they want to try to reload it.
+
+        :param status: The :class:`RenderProcessTerminationStatus` that explains why the page did not load.
+        :type status: RenderProcessTerminationStatus
+        :param status_code: The exit code produced by the termination.
+        :type status_code: int
+        """
+        if status == WebPage.NormalTerminationStatus:
+            msg = self.tr("Render process normal exit.")
+        elif status == WebPage.AbnormalTerminationStatus:
+            msg = self.tr("Render process abnormal exit.")
+        elif status == WebPage.CrashedTerminationStatus:
+            msg = self.tr("Render process crashed.")
+        elif status == WebPage.KilledTerminationStatus:
+            msg = self.tr("Render process killed.")
+
+        # Notifiy the user the page failed to load and see if they want to reload it.
+        reply = QMessageBox.Question(self.window(), msg, self.tr("Render process exited with code: {}\nDo you want to reload the page?".format(status_code)))
+        if reply == QMessageBox.Yes:
+            # TODO: Should this be done in a new thread?
+            self.reload()
+
+    def _on_webaction_changed(self, webaction: WebAction, state: bool) -> None:
+        """
+        Notifies listeners that a page's WebAction has been enabled or disabled.
+
+        :param webaction: The WebAction that was enabled to disabled.
+        :type webaction: WebAction
+        :param state: True if the action was enabled, false if it was disabled.
+        :type state: bool
+        """
+        self.signal_webaction_state_changed.emit(webaction, state)
+
+    def _on_dev_tools_requested(self) -> None:
+        """
+        Notifies listeners of a dev tools request at the current page.
+        """
+        self.signal_dev_tools_requested.emit(self.page())
 
     def set_page(self, page: WebPage) -> None:
-        """"""
-        action = page.action(WebPage.Forward)
-        action.changed.connect()
+        """
+        Sets up signals for WebAction changes and then sets this :class:`WebView`'s :class:`WebPage` to the given page.
+
+        :param page: The class:`WebPage` that this view should display.
+        :type page: WebPage
+        """
+        # Forward webaction.
+        webaction = WebPage.Forward
+        action = page.action(webaction)
+        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+
+        # Back webaction.
+        webaction = WebPage.Back
+        action = page.action(webaction)
+        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+
+        # Reload webaction.
+        webaction = WebPage.Reload
+        action = page.action(webaction)
+        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+
+        # Stop webaction.
+        webaction = WebPage.Stop
+        action = page.action(webaction)
+        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+
+        super().setPage(page)
+
+    def get_load_progress(self) -> int:
+        """
+        Returns the current load progress of the :class:`WebPage` in this :class:`WebView` as a percent from 0 to 100.
+
+        :return: The percent this view is loaded. Errors are indicated with a negative load progress.
+        :rtype: int
+        """
+        return self._load_progress
+
+    def is_webaction_enabled(self, webaction: WebAction) -> bool:
+        """
+        Returns the enabled state of the given WebAction.
+
+        :param webaction: The WebAction whose enabled state is returned.
+        :type webaction: WebAction
+        :return: True if the given WebAction is enabled, false otherwise.
+        :rtype: bool
+        """
+        return self.page().action(webaction).isEnabled()
+
+    def get_favicon(self) -> QIcon:
+        """
+        Returns the current's :class:`WebPage`'s favicon if it has one, a loading icon if the page is still loading, an
+        error icon if it failed loading, or a default icon if the page has no favicon.
+
+        :return: The page's icon.
+        :rtype: QIcon
+        """
+        icon = self.icon()
+
+        # Return the page's favicon if it exists.
+        if icon is not None:
+            return icon
+
+        # If it does not exist, return another icon.
+        if self._load_progress < 0:
+            # There was a load error, return an error icon.
+            return self.style().standardIcon(QStyle.SP_BrowserStop)
+        elif self._load_progress < 100:
+            # There is a page loading now, return a loading icon.
+            return self.style().standardIcon(QStyle.SP_BrowserReload)
+        else:
+            # The page is loaded but it has no favicon, use a default one.
+            # TODO: Make a default favicon.
+            return self.style().standardIcon(QStyle.SP_MessageBoxInformation)
+
+    def createWindow(self, window_type: WebWindowType) -> QWebEngineView:
+        """
+        Returns a new :class:`QWebEngineView` to display a newly requested page in. This commonly happens when a link
+        with target="_blank" is clicked. If an unknown type of window is requested, None is returned.
+
+        :param window_type: The type of the new window to create for the new page.
+        :type window_type: WebWindowType
+        :return: A :class:`QWebEngineView` that will hold the page being opened.
+        :rtype: QWebEngineView
+        """
+        tab_widget = DesktopWindow().get_central_widget()
+
+        if window_type == WebPage.WebBrowserTab:
+            # Add a new tab to the main tab widget for the new page.
+            return tab_widget.add_tab()
+        elif window_type == WebPage.WebBrowserBackgroundTab:
+            # Add a new background tab to the main tab widget for the new page.
+            return tab_widget.add_background_tab()
+        elif window_type == WebPage.WebBrowserWindow:
+            # Use this view's tab for the new page.
+            return tab_widget.current_tab()
+        elif window_type == WebPage.WebDialog:
+            # Show a popup window for the new page.
+            popup_window = PopupWindow(self.page().profile())
+            popup_window.signal_dev_tools_requested.connect(self._on_dev_tools_requested())
+            return popup_window.view()
+        else:
+            # An unknown type of page was requested.
+            return None
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """
+        Renames or creates the "Inspect Element" menu item and then shows the context menu.
+
+        :param event: The :class:`QContextMenuEvent` that triggered this menu popping up.
+        :type event: QContextMenuEvent
+        """
+        menu = self.page().createStandardContextMenu()
+        actions = menu.actions()
+        webaction = self.page().action(WebPage.InspectElement)
+
+        # Add "Inspect Element" option if it's not in the list.
+        if webaction not in actions:
+            # Add a seperator if "View Source" isn't there either.
+            if self.page().action(WebPage.ViewSource) not in actions:
+                menu.addSeperator()
+
+            # Create an inspect action and add it to the menu.
+            action = QAction(menu)
+            action.setText(self.tr("Open inspector in new window"))
+            action.triggered.connect(self._on_dev_tools_requested)
+            menu.insertAction(action)
+        else:
+            actions[actions.index(webaction)].setText(self.tr("Inspect element"))
+
+        # Show the menu.
+        menu.popup(event.globalPos())
