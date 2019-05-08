@@ -1,9 +1,9 @@
+from enum import Enum
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QUrl
 from PyQt5.QtWidgets import QWidget, QDialog, QMessageBox, QStyle, QAction
 from PyQt5.QtGui import QIcon, QContextMenuEvent
-from PyQt5.QtWebEngine import QWebEngineRegisterProtocolHandlerRequest, QWebEngineClientCertificateSelection
-from PyQt5.QtWebEngineWidgets import QWebEngineProfile, QWebEngineView, QWebEnginePage, QWebEngineCertificateError
-from PyQt5.QtWebEngineWidgets.QWebEnginePage import WebAction, RenderProcessTerminationStatus, WebWindowType
+from PyQt5.QtWebEngineCore import QWebEngineRegisterProtocolHandlerRequest
+from PyQt5.QtWebEngineWidgets import QWebEngineProfile, QWebEngineView, QWebEnginePage, QWebEngineCertificateError, QWebEngineClientCertificateSelection
 from PyQt5.QtNetwork import QAuthenticator
 from orchid.widgets.windows import DesktopWindow, PopupWindow
 
@@ -12,6 +12,24 @@ class WebPage(QWebEnginePage):
     """
     A :class:`QWebEnginePage` that positions common web page notifications correctly for :module:`orchid`.
     """
+
+    class WebAction(Enum):
+        Forward = QWebEnginePage.Forward
+        Back = QWebEnginePage.Back
+        Reload = QWebEnginePage.Reload
+        Stop = QWebEnginePage.Stop
+
+    class RenderProcessTerminationStatus(Enum):
+        NormalTerminationStatus = QWebEnginePage.NormalTerminationStatus
+        AbnormalTerminationStatus = QWebEnginePage.AbnormalTerminationStatus
+        CrashedTerminationStatus = QWebEnginePage.CrashedTerminationStatus
+        KilledTerminationStatus = QWebEnginePage.KilledTerminationStatus
+
+    class WebWindowType(Enum):
+        WebBrowserWindow = QWebEnginePage.WebBrowserWindow
+        WebBrowserTab = QWebEnginePage.WebBrowserTab
+        WebDialog = QWebEnginePage.WebDialog
+        WebBrowserBackgroundTab = QWebEnginePage.WebBrowserBackgroundTab
 
     def __init__(self, profile: QWebEngineProfile, parent: QObject = None) -> None:
         """
@@ -148,7 +166,8 @@ class WebView(QWebEngineView):
     A :class:`QWebEngineView` that displays a :class:`WebPage` on the screen.
     """
 
-    signal_webaction_state_changed = pyqtSignal(WebAction, bool)
+    # Class signals.
+    signal_webaction_state_changed = pyqtSignal(WebPage.WebAction, bool)
     signal_favicon_changed = pyqtSignal(QIcon)
     signal_dev_tools_requested = pyqtSignal(WebPage)
 
@@ -172,8 +191,7 @@ class WebView(QWebEngineView):
         Resets load progress to zero and notifies listeners of a favicon change.
         """
         self._load_progress = 0
-        # TODO: Do I need this?
-        #self.signal_favicon_changed.emit(self.get_icon())
+        self.signal_favicon_changed.emit(self.get_icon())
 
     def _on_load_progress_changed(self, progress: int) -> None:
         """
@@ -204,7 +222,7 @@ class WebView(QWebEngineView):
         """
         self.signal_favicon_changed.emit(self.get_icon())
 
-    def _on_render_process_terminated(self, status: RenderProcessTerminationStatus, status_code: int) -> None:
+    def _on_render_process_terminated(self, status: WebPage.RenderProcessTerminationStatus, status_code: int) -> None:
         """
         Shows the user a notification that the page failed to load and checks if they want to try to reload it.
 
@@ -213,13 +231,13 @@ class WebView(QWebEngineView):
         :param status_code: The exit code produced by the termination.
         :type status_code: int
         """
-        if status == WebPage.NormalTerminationStatus:
+        if status == WebPage.RenderProcessTerminationStatus.NormalTerminationStatus:
             msg = self.tr("Render process normal exit.")
-        elif status == WebPage.AbnormalTerminationStatus:
+        elif status == WebPage.RenderProcessTerminationStatus.AbnormalTerminationStatus:
             msg = self.tr("Render process abnormal exit.")
-        elif status == WebPage.CrashedTerminationStatus:
+        elif status == WebPage.RenderProcessTerminationStatus.CrashedTerminationStatus:
             msg = self.tr("Render process crashed.")
-        elif status == WebPage.KilledTerminationStatus:
+        elif status == WebPage.RenderProcessTerminationStatus.KilledTerminationStatus:
             msg = self.tr("Render process killed.")
 
         # Notifiy the user the page failed to load and see if they want to reload it.
@@ -228,11 +246,11 @@ class WebView(QWebEngineView):
             # TODO: Should this be done in a new thread?
             self.reload()
 
-    def _on_webaction_changed(self, webaction: WebAction, state: bool) -> None:
+    def _on_webaction_changed(self, webaction: WebPage.WebAction, state: bool) -> None:
         """
-        Notifies listeners that a page's WebAction has been enabled or disabled.
+        Notifies listeners that a page's :class:`WebAction` has been enabled or disabled.
 
-        :param webaction: The WebAction that was enabled to disabled.
+        :param webaction: The :class:`WebAction` that was enabled to disabled.
         :type webaction: WebAction
         :param state: True if the action was enabled, false if it was disabled.
         :type state: bool
@@ -247,28 +265,28 @@ class WebView(QWebEngineView):
 
     def set_page(self, page: WebPage) -> None:
         """
-        Sets up signals for WebAction changes and then sets this :class:`WebView`'s :class:`WebPage` to the given page.
+        Sets up signals for :class:`WebAction` changes and then sets this :class:`WebView`'s :class:`WebPage` to the given page.
 
         :param page: The class:`WebPage` that this view should display.
         :type page: WebPage
         """
         # Forward webaction.
-        webaction = WebPage.Forward
+        webaction = WebPage.WebAction.Forward
         action = page.action(webaction)
         action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
 
         # Back webaction.
-        webaction = WebPage.Back
+        webaction = WebPage.WebAction.Back
         action = page.action(webaction)
         action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
 
         # Reload webaction.
-        webaction = WebPage.Reload
+        webaction = WebPage.WebAction.Reload
         action = page.action(webaction)
         action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
 
         # Stop webaction.
-        webaction = WebPage.Stop
+        webaction = WebPage.WebAction.Stop
         action = page.action(webaction)
         action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
 
@@ -283,7 +301,7 @@ class WebView(QWebEngineView):
         """
         return self._load_progress
 
-    def is_webaction_enabled(self, webaction: WebAction) -> bool:
+    def is_webaction_enabled(self, webaction: WebPage.WebAction) -> bool:
         """
         Returns the enabled state of the given WebAction.
 
@@ -320,7 +338,7 @@ class WebView(QWebEngineView):
             # TODO: Make a default favicon.
             return self.style().standardIcon(QStyle.SP_MessageBoxInformation)
 
-    def createWindow(self, window_type: WebWindowType) -> QWebEngineView:
+    def createWindow(self, window_type: WebPage.WebWindowType) -> QWebEngineView:
         """
         Returns a new :class:`QWebEngineView` to display a newly requested page in. This commonly happens when a link
         with target="_blank" is clicked. If an unknown type of window is requested, None is returned.
@@ -332,16 +350,16 @@ class WebView(QWebEngineView):
         """
         tab_widget = DesktopWindow().get_central_widget()
 
-        if window_type == WebPage.WebBrowserTab:
+        if window_type == WebPage.WebWindowType.WebBrowserTab:
             # Add a new tab to the main tab widget for the new page.
             return tab_widget.add_tab()
-        elif window_type == WebPage.WebBrowserBackgroundTab:
+        elif window_type == WebPage.WebWindowType.WebBrowserBackgroundTab:
             # Add a new background tab to the main tab widget for the new page.
             return tab_widget.add_background_tab()
-        elif window_type == WebPage.WebBrowserWindow:
+        elif window_type == WebPage.WebWindowType.WebBrowserWindow:
             # Use this view's tab for the new page.
             return tab_widget.current_tab()
-        elif window_type == WebPage.WebDialog:
+        elif window_type == WebPage.WebWindowType.WebDialog:
             # Show a popup window for the new page.
             popup_window = PopupWindow(self.page().profile())
             popup_window.signal_dev_tools_requested.connect(self._on_dev_tools_requested())
