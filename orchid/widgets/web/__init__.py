@@ -1,11 +1,10 @@
 from enum import Enum
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QUrl
-from PyQt5.QtWidgets import QWidget, QDialog, QMessageBox, QStyle, QAction
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QUrl, QRect
+from PyQt5.QtWidgets import QWidget, QDialog, QMessageBox, QStyle, QAction, QLineEdit, QSizePolicy, QVBoxLayout
 from PyQt5.QtGui import QIcon, QContextMenuEvent
 from PyQt5.QtWebEngineCore import QWebEngineRegisterProtocolHandlerRequest
 from PyQt5.QtWebEngineWidgets import QWebEngineProfile, QWebEngineView, QWebEnginePage, QWebEngineCertificateError, QWebEngineClientCertificateSelection
 from PyQt5.QtNetwork import QAuthenticator
-from orchid.widgets.windows import DesktopWindow, PopupWindow
 
 
 class WebPage(QWebEnginePage):
@@ -85,14 +84,14 @@ class WebPage(QWebEnginePage):
         # else:
         auth = None
 
-    def _on_feature_permission_requested(self, request: QUrl, feature, Feature) -> None:
+    def _on_feature_permission_requested(self, request: QUrl, feature: QWebEnginePage.Feature) -> None:
         """
         Displays a notification for the user to accept or deny a feature request from a website.
 
         :param request: The :class:`QUrl` that made the request for the feature.
         :type request: QUrl
         :param feature: The feature that was requested.
-        :type feature: Feature
+        :type feature: QWebEnginePage.Feature
         """
         # Map features to questions to ask the user.
         features = {
@@ -107,7 +106,7 @@ class WebPage(QWebEnginePage):
 
         # Ask the user if permission should be granted.
         question = features.get(feature, "")
-        if not question.isEmpty() and QMessageBox.question(self, self.tr("Permission Request"), question) == QMessageBox.Yes:
+        if question and QMessageBox.question(self.parent(), self.tr("Permission Request"), question) == QMessageBox.Yes:
             self.setFeaturePermission(request, feature, self.PermissionGrantedByUser)
         else:
             self.setFeaturePermission(request, feature, self.PermissionDeniedByUser)
@@ -191,7 +190,7 @@ class WebView(QWebEngineView):
         Resets load progress to zero and notifies listeners of a favicon change.
         """
         self._load_progress = 0
-        self.signal_favicon_changed.emit(self.get_icon())
+        self.signal_favicon_changed.emit(self.get_favicon())
 
     def _on_load_progress_changed(self, progress: int) -> None:
         """
@@ -220,7 +219,7 @@ class WebView(QWebEngineView):
         :param icon: The new favicon for the :class:`WebView`.
         :type icon: QIcon
         """
-        self.signal_favicon_changed.emit(self.get_icon())
+        self.signal_favicon_changed.emit(self.get_favicon())
 
     def _on_render_process_terminated(self, status: WebPage.RenderProcessTerminationStatus, status_code: int) -> None:
         """
@@ -348,7 +347,7 @@ class WebView(QWebEngineView):
         :return: A :class:`QWebEngineView` that will hold the page being opened.
         :rtype: QWebEngineView
         """
-        tab_widget = DesktopWindow().get_central_widget()
+        tab_widget = self.window().get_tab_widget()
 
         if window_type == WebPage.WebWindowType.WebBrowserTab:
             # Add a new tab to the main tab widget for the new page.
@@ -381,7 +380,7 @@ class WebView(QWebEngineView):
 
         # Add "Inspect Element" option if it's not in the list.
         if webaction not in actions:
-            # Add a seperator if "View Source" isn't there either.
+            # Add a separator if "View Source" isn't there either.
             if self.page().action(WebPage.ViewSource) not in actions:
                 menu.addSeperator()
 
@@ -389,9 +388,87 @@ class WebView(QWebEngineView):
             action = QAction(menu)
             action.setText(self.tr("Open inspector in new window"))
             action.triggered.connect(self._on_dev_tools_requested)
-            menu.insertAction(action)
+            menu.insertAction(None, action)
         else:
             actions[actions.index(webaction)].setText(self.tr("Inspect element"))
 
         # Show the menu.
         menu.popup(event.globalPos())
+
+
+class PopupWindow(QWidget):
+    """
+    A :class:`QWidget` popup to display a :class:`WebPage`'s request for a new popup window.
+    """
+
+    def __init__(self, profile: QWebEngineProfile) -> None:
+        """
+        Creates the :class:`PopupWindow`, initializes its web view, action, and URL, and listens for changes in the
+        children of the popup.
+
+        :param profile:
+        """
+        super().__init__()
+
+        # Configure the popup.
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+
+        # Add a layout to the popup.
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+
+        # Create the popup's action.
+        action = QAction(self)
+
+        # Create the URL text box.
+        self._url_text_box = QLineEdit(self)
+        self._url_text_box.setReadOnly(True)
+        self._url_text_box.addAction(action, QLineEdit.LeadingPosition)
+        layout.addWidget(self._url_text_box)
+
+        # Create the web view.
+        self._web_view = WebView(self)
+        self._web_view.setPage(WebPage(profile, self._web_view))
+        layout.addWidget(self._web_view)
+
+        self._web_view.setFocus()
+
+        # Listen for signals from the popup's widgets.
+        self._web_view.titleChanged.connect(self.setWindowTitle)
+        self._web_view.urlChanged.connect(self._on_url_changed)
+        self._web_view.signal_favicon_changed(action.setIcon)
+        self._web_view.page().geometryChangeRequested.connect(self._on_geometry_change_requested)
+        self._web_view.page().windowCloseRequested.connect(self.close)
+
+    def _on_url_changed(self, url: QUrl) -> None:
+        """
+        Shows the given :class:`QUrl` in the text box of this :class:`PopupWindow`.
+
+        :param url: The :class:`QUrl` to show in the popup.
+        :type url: QUrl
+        """
+        self._url_text_box.setText(url.toDisplayString())
+
+    def _on_geometry_change_requested(self, geometry: QRect) -> None:
+        """
+        Updates this window's geometry whenever the child page's geometry updates.
+
+        :param geometry: The new geometry to update the :class:`PopupWindow` with.
+        :type geometry: QRect
+        """
+        window = self.windowHandle()
+        if window is not None:
+            self.setGeometry(geometry.marginsRemoved(window.frameMargins()))
+        self.show()
+        self._web_view.setFocus()
+
+    def get_webview(self) -> WebView:
+        """
+        Returns this :class:`PopupWindow`'s :class:`WebView`.
+
+        :return: The :class:`WebView` for this :class:`PopupWindow`.
+        :rtype: WebView
+        """
+        return self._web_view

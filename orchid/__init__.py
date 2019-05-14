@@ -2,8 +2,7 @@ from sys import argv, exit
 from platform import system as system_name
 from logging import getLogger, basicConfig, DEBUG
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QObject, QUrl
-from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtCore import QObject
 from orchid.widgets.windows import DesktopWindow
 from orchid.utils.theme import Themer
 if system_name() == "Windows":
@@ -27,7 +26,12 @@ class DesktopEnvironment(QObject):
         app based on the theme file and configures the loggers.
         """
         super().__init__()
-        self._app = QApplication(argv)  # Create the Qt app.
+
+        # Create the Qt app.
+        self._app = QApplication(argv)
+        self._app.setApplicationName("Orchid")
+        self._app.setApplicationVersion("2019.5.14")
+        # TODO: self._app.setWindowIcon()
 
         # Configure loggers.
         basicConfig(level=DEBUG)
@@ -39,11 +43,6 @@ class DesktopEnvironment(QObject):
         # Create the desktop window.
         self._desktop = DesktopWindow()
         self._desktop.show()
-
-        # Show the start page.
-        web_view = QWebEngineView()
-        self._desktop.add_tab(web_view)
-        web_view.load(QUrl("https://www.google.com"))
 
         # Create the window manager.
         #self._wm_thread = QThread()

@@ -1,7 +1,7 @@
 from logging import getLogger
 from PyQt5.QtCore import Qt, pyqtSignal, QUrl, QPoint
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor
-from PyQt5.QtWidgets import QWidget, QTabWidget, QTabBar, QMenu
+from PyQt5.QtWidgets import QWidget, QTabWidget, QTabBar, QMenu, QToolButton
 from PyQt5.QtWebEngineWidgets import QWebEngineProfile
 from orchid.widgets.web import WebView, WebPage
 
@@ -65,7 +65,7 @@ class TabWidget(QTabWidget):
 
         # Listen for tab bar changes.
         tab_bar.customContextMenuRequested.connect(self._on_context_menu_requested)
-        tab_bar.tabCloseRequested.connect(self._on_tab_close_requested)
+        tab_bar.tabCloseRequested.connect(self.close_tab)
 
         # Listen for tab changes.
         self.currentChanged.connect(self._on_current_tab_changed)
@@ -74,6 +74,13 @@ class TabWidget(QTabWidget):
         if profile.isOffTheRecord():
             # TODO: Show incognito icon on tab bar maybe.
             pass
+
+        # Add the new tab button.
+        index = self.addTab(QWidget(self), "")  # Create an empty new tab for the button to sit on.
+        new_tab_button = QToolButton(tab_bar)
+        new_tab_button.setText("+")
+        new_tab_button.setToolTip(self.tr("Creates a new tab"))
+        tab_bar.setTabButton(index, QTabBar.LeftSide, new_tab_button)
 
     def _on_current_tab_changed(self, index: int) -> None:
         """
@@ -96,28 +103,29 @@ class TabWidget(QTabWidget):
         if index >= 0:
             # Make a new web page and focus it.
             view = self.widget(index)  # This should be a WebView.
-            if not view.url().isEmpty():
-                view.setFocus()
+            if isinstance(view, WebView):
+                if not view.url().isEmpty():
+                    view.setFocus()
 
-            # Change defaults to new page values.
-            title = view.title()
-            load_progress = view.get_load_progress()
-            url = view.url()
-            favicon = view.get_favicon()
-            back_state = view.is_webaction_enabled(WebPage.Back)
-            forward_state = view.is_webaction_enabled(WebPage.Forward)
-            stop_state = view.is_webaction_enabled(WebPage.Stop)
-            reload_state = view.is_webaction_enabled(WebPage.Reload)
+                # Change defaults to new page values.
+                title = view.title()
+                load_progress = view.get_load_progress()
+                url = view.url()
+                favicon = view.get_favicon()
+                back_state = view.is_webaction_enabled(WebPage.Back)
+                forward_state = view.is_webaction_enabled(WebPage.Forward)
+                stop_state = view.is_webaction_enabled(WebPage.Stop)
+                reload_state = view.is_webaction_enabled(WebPage.Reload)
 
         # Notify listeners of tab values.
         self.signal_title_changed.emit(title)
-        self.signal_load_progress.emit(load_progress)
+        self.signal_load_progress_changed.emit(load_progress)
         self.signal_url_changed.emit(url)
         self.signal_favicon_changed.emit(favicon)
-        self.signal_webaction_state_changed.emit(WebPage.Back, back_state)
-        self.signal_webaction_state_changed.emit(WebPage.Forward, forward_state)
-        self.signal_webaction_state_changed.emit(WebPage.Stop, stop_state)
-        self.signal_webaction_state_changed.emit(WebPage.Reload, reload_state)
+        self.signal_webaction_state_changed.emit(WebPage.WebAction.Back, back_state)
+        self.signal_webaction_state_changed.emit(WebPage.WebAction.Forward, forward_state)
+        self.signal_webaction_state_changed.emit(WebPage.WebAction.Stop, stop_state)
+        self.signal_webaction_state_changed.emit(WebPage.WebAction.Reload, reload_state)
 
     def _on_context_menu_requested(self, point: QPoint) -> None:
         """
@@ -128,21 +136,21 @@ class TabWidget(QTabWidget):
         """
         # Create a new menu with a default "New Tab" action.
         menu = QMenu(self)
-        menu.addAction(self.tr("New &Tab"), self, self.create_tab, QKeySequence.AddTab)
+        menu.addAction(self.tr("New &Tab"), self.create_tab, QKeySequence.AddTab)
 
         # Populate the reset of the menu based on if a tab was clicked.
         index = self.tabBar().tabAt(point)
         if index >= 0:
             # A tab was clicked on, add options for it to the menu.
-            menu.addAction(self.tr("Clone Tab"), self, self.clone_tab(index))
+            menu.addAction(self.tr("Clone Tab"), lambda index=index: self.clone_tab(index))
             menu.addSeparator()
-            menu.addAction(self.tr("&Close Tab"), self, self.close_tab(index), QKeySequence.Close)
-            menu.addAction(self.tr("Close &Other Tabs"), self, self.close_other_tabs(index))
+            menu.addAction(self.tr("&Close Tab"), lambda index=index: self.close_tab(index), QKeySequence.Close)
+            menu.addAction(self.tr("Close &Other Tabs"), lambda index=index: self.close_other_tabs(index))
             menu.addSeparator()
-            menu.addAction(self.tr("&Reload Tab"), self, self.reload_tab(index), QKeySequence.Refresh)
+            menu.addAction(self.tr("&Reload Tab"), lambda index=index: self.reload_tab(index), QKeySequence.Refresh)
         else:
             menu.addSeparator()
-        menu.addAction(self.tr("Reload All Tabs"), self, self.reload_all_tabs)
+        menu.addAction(self.tr("Reload All Tabs"), self.reload_all_tabs)
 
         # Show the new menu.
         menu.exec(QCursor.pos())
@@ -154,12 +162,14 @@ class TabWidget(QTabWidget):
         :return: The :class:`WebView` created.
         :rtype: WebView
         """
-        webview = self.ceate_background_tab()
+        webview = self.create_background_tab()
         self.setCurrentWidget(webview)
         return webview
 
     def create_background_tab(self) -> WebView:
-        """"""
+        """
+        Creates a new tab with a new :class:`WebPage` in a new :class:`WebView`.
+        """
         # Create the new WebView and WebPage.
         webview = WebView(self)
         webpage = WebPage(self._profile, webview)
@@ -175,13 +185,16 @@ class TabWidget(QTabWidget):
 
         # Listen for WebPage changes.
         webpage.linkHovered.connect(lambda url, webview=webview: self._on_webpage_link_hovered(url, webview))
-        webpage.windowCloseRequested.connect(self._on_webpage_window_close_requested(webview))
+        webpage.windowCloseRequested.connect(lambda webview=webview: self._on_webpage_window_close_requested(webview))
 
         # Configure the new WebView.
         index = self.addTab(webview, self.tr("(Untitled)"))
         self.setTabIcon(index, webview.get_favicon())
         webview.resize(self.currentWidget().size())
         webview.show()
+
+        # TODO: Use user defaults for a homepage.
+        webpage.setUrl(QUrl("https://www.google.com"))
 
         return webview
 
@@ -249,7 +262,7 @@ class TabWidget(QTabWidget):
 
         # Update this tab's icon with the new icon.
         if index >= 0:
-            self.setTabIcon(icon)
+            self.setTabIcon(index, icon)
 
         # Notify listeners of the icon change.
         if self.currentIndex() == index:
@@ -309,14 +322,15 @@ class TabWidget(QTabWidget):
         :param index: The location of the tab to not close.
         :type index: int
         """
-        for i in range(self.count()):
-            if i != index:
-                self.close_tab(i)
-    
+        for i in range(self.count() - 1, index, -1):
+            self.close_tab(i)
+        for i in range(index - 1, -1, -1):
+            self.close_tab(i)
+
     def close_tab(self, index: int = 0) -> None:
         """
         Closes the tab found at the given index. If no index is specified then the first tab is removed.
-        
+
         :param index: The index of the tab to close.
         :type index: int
         """
@@ -326,21 +340,21 @@ class TabWidget(QTabWidget):
             has_focus = widget.hasFocus()
             self.removeTab(index)
             widget.deleteLater()
-            
+
             # Focus the next widget if the one that was removed had focus.
             if has_focus and self.count() > 0:
                 self.currentWidget().setFocus()
-            
+
             # Make a new tab if the last tab was removed.
             if self.count() == 0:
                 self.create_tab()
         else:
             self._logger.warning("Cannot close a tab that is not a WebView")
-    
+
     def clone_tab(self, index: int = 0) -> None:
         """
         Clones the given tab. If no index is specified then the first tab is cloned.
-        
+
         :param index: The index of the tab to clone.
         :type index: int
         """
@@ -350,11 +364,11 @@ class TabWidget(QTabWidget):
             new_tab.setUrl(widget.url())
         else:
             self._logger.warning("Cannot clone a tab that is not a WebView")
-    
+
     def set_url(self, url: QUrl) -> None:
         """
         Sets the current tab's URL to the given :class:`QUrl`.
-        
+
         :param url: The URL to navigate the current tab to.
         :type url: QUrl
         """
@@ -364,7 +378,7 @@ class TabWidget(QTabWidget):
             widget.setFocus()
         else:
             self._logger.warning("Cannot set a URL on a tab that is not a WebView")
-    
+
     def trigger_webpage_action(self, webaction: WebPage.WebAction) -> None:
         """
         Triggers the given :class:`WebAction` on the current tab's :class:`WebView`.
