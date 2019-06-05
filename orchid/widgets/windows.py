@@ -27,35 +27,6 @@ class DesktopWindow:
             DesktopWindow.instance = _DesktopWindow(parent, flags)
             self.tr = DesktopWindow.instance.tr
 
-    def add_tab(self, widget: QWidget, title: str = None) -> None:
-        """
-        Adds the given widget to a new tab in the central widget. If the given widget is None this does nothing.
-
-        :param widget: The widget to add to the central widget.
-        :type widget: QWidget
-        :param title: An optional string to add as the new tab's title text.
-        :type title: str
-        """
-        # Do nothing if no widget was given.
-        if widget is not None:
-            central_widget = self.get_central_widget()  # Get the central tab widget.
-
-            # Connect to page loading signals if the widget is a web view.
-            if isinstance(widget, QWebEngineView):
-                widget.loadProgress.connect(self._on_load_progress_changed)
-                widget.loadFinished.connect(self._on_load_progress_finished)
-
-            # Set an appropriate title.
-            if not title and not widget.windowTitle():
-                title = self.tr("Untitled")
-            else:
-                title = widget.windowTitle()
-
-            central_widget.addTab(widget, title)  # Add the widget to a new tab.
-
-    def add_background_tab(self) -> None:
-        """"""
-
     @staticmethod
     def get_tab_widget() -> TabWidget:
         """
@@ -66,18 +37,13 @@ class DesktopWindow:
         """
         return DesktopWindow.instance.centralWidget()
 
-    def _on_load_progress_changed(self, progress: int) -> None:
-        print("Loading:", progress)
-
-    def _on_load_progress_finished(self, status: bool) -> None:
-        print("Loaded:", status)
-
     @staticmethod
     def show() -> None:
         """
         Make the :class:`DesktopWindow` visible and fullscreen.
         """
-        DesktopWindow.instance.showFullScreen()
+        #DesktopWindow.instance.showFullScreen()
+        DesktopWindow.instance.show()
 
 
 class _DesktopWindow(QMainWindow):
@@ -101,8 +67,17 @@ class _DesktopWindow(QMainWindow):
         # Configure the main window.
         self.setContextMenuPolicy(Qt.NoContextMenu)
 
-        # Create the top search bar.
-        search_bar = SearchBar(self)
+        # Create the main area apps get drawn in.
+        central_widget = TabWidget(QWebEngineProfile.defaultProfile(), self)
+        central_widget.create_tab()
+        self.setCentralWidget(central_widget)
+
+        # Connect to signals from the central widget.
+        if not for_dev_tools:
+            central_widget.signal_link_hovered.connect(self._on_link_hovered)
+
+        # Create the top search bar that will manage the central widget.
+        search_bar = SearchBar(central_widget, self)
         self.addToolBar(search_bar)
 
         # Add next bar on next line.
@@ -112,11 +87,15 @@ class _DesktopWindow(QMainWindow):
         bookmarks_bar = BookmarksBar(self)
         self.addToolBar(bookmarks_bar)
 
-        # Create the main area apps get drawn in.
-        main_widget = TabWidget(QWebEngineProfile.defaultProfile(), self)
-        main_widget.create_tab()
-        self.setCentralWidget(main_widget)
-
         # Create the side bar.
         settings_area = SideBar(self)
         self.addToolBar(Qt.LeftToolBarArea, settings_area)
+
+    def _on_link_hovered(self, url: str) -> None:
+        """
+        Displays the URL of the link being hovered on a :class:`WebPage` in the status bar.
+
+        :param url: The URL of the link that is being hovered.
+        :type url: str
+        """
+        self.statusBar().showMessage(url)

@@ -6,23 +6,6 @@ from PyQt5.QtWebEngineWidgets import QWebEngineProfile
 from orchid.widgets.web import WebView, WebPage
 
 
-class LogWidget(QWidget):
-    """
-    A normal :class:`QWidget` with a logger built in.
-    """
-
-    def __init__(self, parent: QWidget = None) -> None:
-        """
-        Creates a widget with a logger.
-
-        :param parent: The QWidget parent of this widget. Parenting ensures children widgets are destroyed when a parent
-         is destroyed.
-        :type parent: QWidget
-        """
-        super().__init__(parent)
-        self._logger = getLogger(__name__)
-
-
 class TabWidget(QTabWidget):
     """
     The main widget in :module:`orchid`. This is the tab widget that displays all other windows.
@@ -76,11 +59,13 @@ class TabWidget(QTabWidget):
             pass
 
         # Add the new tab button.
-        index = self.addTab(QWidget(self), "")  # Create an empty new tab for the button to sit on.
+        new_tab_index = self.addTab(QWidget(self), "")  # Create an empty new tab for the button to sit on.
         new_tab_button = QToolButton(tab_bar)
         new_tab_button.setText("+")
         new_tab_button.setToolTip(self.tr("Creates a new tab"))
-        tab_bar.setTabButton(index, QTabBar.LeftSide, new_tab_button)
+        new_tab_button.pressed.connect(self.create_tab)
+        tab_bar.setTabButton(new_tab_index, QTabBar.RightSide, new_tab_button)
+        tab_bar.setTabEnabled(new_tab_index, False)  # Stop the user from being able to change to this fake tab.
 
     def _on_current_tab_changed(self, index: int) -> None:
         """
@@ -188,7 +173,7 @@ class TabWidget(QTabWidget):
         webpage.windowCloseRequested.connect(lambda webview=webview: self._on_webpage_window_close_requested(webview))
 
         # Configure the new WebView.
-        index = self.addTab(webview, self.tr("(Untitled)"))
+        index = self.insertTab(self.count() - 1, webview, self.tr("(Untitled)"))
         self.setTabIcon(index, webview.get_favicon())
         webview.resize(self.currentWidget().size())
         webview.show()
@@ -302,14 +287,14 @@ class TabWidget(QTabWidget):
         :type webview: WebView
         """
         index = self.indexOf(webview)
-        if index >= 0:
+        if 0 <= index < self.count() - 1:
             self.close_tab(index)
 
     def reload_all_tabs(self) -> None:
         """
         Calls :method:`reload()` method of each :class:`WebView` in this :class:`TabWidget`.
         """
-        for i in range(self.count()):
+        for i in range(self.count() - 1):
             widget = self.widget(i)
             if isinstance(widget, WebView):
                 widget.reload()
@@ -322,7 +307,7 @@ class TabWidget(QTabWidget):
         :param index: The location of the tab to not close.
         :type index: int
         """
-        for i in range(self.count() - 1, index, -1):
+        for i in range(self.count() - 2, index, -1):
             self.close_tab(i)
         for i in range(index - 1, -1, -1):
             self.close_tab(i)
@@ -337,16 +322,18 @@ class TabWidget(QTabWidget):
         widget = self.widget(index)
         if isinstance(widget, WebView):
             # Check if the widget has focus before removing it.
-            has_focus = widget.hasFocus()
+            had_focus = widget.hasFocus()
             self.removeTab(index)
             widget.deleteLater()
 
             # Focus the next widget if the one that was removed had focus.
-            if has_focus and self.count() > 0:
+            if had_focus and self.count() > 1:
+                if self.currentIndex() == self.count() - 1:
+                    self.previous_tab()  # Don't focus the new tab button.
                 self.currentWidget().setFocus()
 
             # Make a new tab if the last tab was removed.
-            if self.count() == 0:
+            if self.count() == 1:
                 self.create_tab()
         else:
             self._logger.warning("Cannot close a tab that is not a WebView")
@@ -390,13 +377,15 @@ class TabWidget(QTabWidget):
         if isinstance(widget, WebView):
             widget.triggerPageAction(webaction)
             widget.setFocus()
+        else:
+            self._logger.warning("Cannot trigger action on a tab that is not a WebView: {}".format(webaction.name))
 
     def next_tab(self) -> None:
         """
         Changes this widget's view to the next tab.
         """
         next_index = self.currentIndex() + 1
-        if next_index == self.count():
+        if next_index == self.count() - 1:
             next_index = 0
         self.setCurrentIndex(next_index)
 
@@ -406,7 +395,7 @@ class TabWidget(QTabWidget):
         """
         previous_index = self.currentIndex() - 1
         if previous_index < 0:
-            previous_index = self.count() - 1
+            previous_index = self.count() - 2
         self.setCurrentIndex(previous_index)
 
     def reload_tab(self, index: int = 0) -> None:

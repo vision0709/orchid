@@ -30,7 +30,7 @@ class DesktopEnvironment(QObject):
         # Create the Qt app.
         self._app = QApplication(argv)
         self._app.setApplicationName("Orchid")
-        self._app.setApplicationVersion("2019.5.14")
+        self._app.setApplicationVersion("2019.6.4")
         # TODO: self._app.setWindowIcon()
 
         # Configure loggers.
