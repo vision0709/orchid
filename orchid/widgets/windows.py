@@ -1,7 +1,7 @@
 from typing import Union
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QMainWindow
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
+from PyQt5.QtWebEngineWidgets import QWebEngineProfile
 from orchid.widgets import TabWidget
 from orchid.widgets.bars import SearchBar, BookmarksBar, SideBar
 
@@ -13,10 +13,12 @@ class DesktopWindow:
 
     instance = None
 
-    def __init__(self, parent: QWidget = None, flags: Union[Qt.WindowFlags, Qt.WindowType] = Qt.WindowFlags()) -> None:
+    def __init__(self, for_dev_tools: bool = False, parent: QWidget = None, flags: Union[Qt.WindowFlags, Qt.WindowType] = Qt.WindowFlags()) -> None:
         """
         Create an instance of the :class:`_DesktopWindow` if one does not already exist.
 
+        :param for_dev_tools: If true, this is a dev tools window; if false, this is a normal window.
+        :type for_dev_tools: bool
         :param parent: An optional :class:`QWidget` parent object.
         :type parent: QWidget
         :param flags: Optional :class:`Qt.WindowFlags` or :class:`Qt.WindowType`s that define how the window is
@@ -24,7 +26,7 @@ class DesktopWindow:
         :type flags: Union[Qt.WindowFlags, Qt.WindowType]
         """
         if not DesktopWindow.instance:
-            DesktopWindow.instance = _DesktopWindow(parent, flags)
+            DesktopWindow.instance = _DesktopWindow(for_dev_tools, parent, flags)
             self.tr = DesktopWindow.instance.tr
 
     @staticmethod
@@ -52,10 +54,12 @@ class _DesktopWindow(QMainWindow):
     exist. This is a singleton.
     """
 
-    def __init__(self, parent: QWidget = None, flags: Union[Qt.WindowFlags, Qt.WindowType] = Qt.WindowFlags()) -> None:
+    def __init__(self, for_dev_tools: bool = False, parent: QWidget = None, flags: Union[Qt.WindowFlags, Qt.WindowType] = Qt.WindowFlags()) -> None:
         """
         Creates the action, settings, status, and window areas of the desktop.
 
+        :param for_dev_tools: If true, this is a dev tools window; if false, this is a normal window.
+        :type for_dev_tools: bool
         :param parent: An optional :class:`QWidget` parent object.
         :type parent: QWidget
         :param flags: Optional :class:`Qt.WindowFlags` or :class:`Qt.WindowType`s that define how the window is
@@ -72,12 +76,8 @@ class _DesktopWindow(QMainWindow):
         central_widget.create_tab()
         self.setCentralWidget(central_widget)
 
-        # Connect to signals from the central widget.
-        if not for_dev_tools:
-            central_widget.signal_link_hovered.connect(self._on_link_hovered)
-
         # Create the top search bar that will manage the central widget.
-        search_bar = SearchBar(central_widget, self)
+        search_bar = SearchBar(self)
         self.addToolBar(search_bar)
 
         # Add next bar on next line.
@@ -90,6 +90,15 @@ class _DesktopWindow(QMainWindow):
         # Create the side bar.
         settings_area = SideBar(self)
         self.addToolBar(Qt.LeftToolBarArea, settings_area)
+
+        # Connect to signals from the central widget and search bar.
+        if not for_dev_tools:
+            central_widget.signal_link_hovered.connect(self._on_link_hovered)
+            central_widget.signal_url_changed.connect(search_bar.set_url)
+            central_widget.signal_webaction_state_changed.connect(search_bar.set_webaction_state)
+
+            search_bar.signal_return_pressed.connect(central_widget.set_url)
+            search_bar.signal_webpage_action.connect(central_widget.trigger_webpage_action)
 
     def _on_link_hovered(self, url: str) -> None:
         """

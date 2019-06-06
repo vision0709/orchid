@@ -1,6 +1,6 @@
 from sys import exit
+from PyQt5.QtCore import QUrl, pyqtSignal
 from PyQt5.QtWidgets import QWidget, QToolBar, QToolButton, QSizePolicy, QLineEdit, QStyle, QMenu, QAction, QMessageBox
-from orchid.widgets import TabWidget
 from orchid.widgets.web import WebPage
 
 
@@ -9,51 +9,53 @@ class SearchBar(QToolBar):
     A widget that contains navigation buttons and a search bar for file and web access.
     """
 
-    def __init__(self, tab_widget: TabWidget, for_dev_tools: bool = False, parent: QWidget = None) -> None:
+    signal_return_pressed = pyqtSignal(QUrl)
+    signal_webpage_action = pyqtSignal(WebPage.WebAction)
+
+    def __init__(self, parent: QWidget = None) -> None:
         """
         Creates the widget and fills it buttons and a search bar.
 
-        :param tab_widget: The :class:`TabWidget` this :class:`SearchBar` will manage.
-        :type tab_widget: TabWidget
-        :param for_dev_tools:
-        :type for_dev_tools: bool
         :param parent: An optional parent object for this toolbar.
         :type parent: QWidget
         """
         super().__init__(parent)
         tr = self.tr
 
+        self._webactions = {}
+
         # Configure tool bar.
         self.setMovable(False)
-        self.tab_widget = tab_widget
-
-        # Connect to tab widget changes.
-        if not for_dev_tools:
-            self.tab_widget.signal_favicon_changed.connect(self._on_favicon_changed)
 
         # Back button.
         button = QToolButton(self)
         button.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
         button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         button.setToolTip(tr("Go back"))
-        button.pressed.connect(lambda action=WebPage.Back: self.tab_widget.trigger_webpage_action(action))
+        button.setProperty("action", WebPage.Back)
+        button.pressed.connect(self._on_action_button_pressed)
         self.addWidget(button)
+        self._webactions[WebPage.Back] = button
 
         # Forward button.
         button = QToolButton(self)
         button.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekForward))
         button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         button.setToolTip(tr("Go forward"))
-        button.pressed.connect(lambda action=WebPage.Forward: self.tab_widget.trigger_webpage_action(action))
+        button.setProperty("action", WebPage.Forward)
+        button.pressed.connect(self._on_action_button_pressed)
         self.addWidget(button)
+        self._webactions[WebPage.Forward] = button
 
         # Refresh button.
         button = QToolButton(self)
         button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
         button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         button.setToolTip(tr("Refresh page"))
-        button.pressed.connect(lambda action=WebPage.Reload: self.tab_widget.trigger_webpage_action(action))
+        button.setProperty("action", WebPage.Reload)
+        button.pressed.connect(self._on_action_button_pressed)
         self.addWidget(button)
+        self._webactions[WebPage.Reload] = button
 
         # Browser home button.
         button = QToolButton(self)
@@ -63,11 +65,12 @@ class SearchBar(QToolBar):
         self.addWidget(button)
 
         # Search bar.
-        self.search_bar = QLineEdit(self)
-        self.search_bar.setPlaceholderText(tr("Search for anything"))
-        self.search_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        self.search_bar.setClearButtonEnabled(True)
-        self.addWidget(self.search_bar)
+        self._search_bar = QLineEdit(self)
+        self._search_bar.setPlaceholderText(tr("Search for anything"))
+        self._search_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self._search_bar.setClearButtonEnabled(True)
+        self._search_bar.returnPressed.connect(self._on_return_pressed)
+        self.addWidget(self._search_bar)
 
         # File home button.
         button = QToolButton(self)
@@ -107,6 +110,45 @@ class SearchBar(QToolBar):
         action.setToolTip(tr("Turn off the PC"))
         menu.addAction(action)
         button.setMenu(menu)
+
+    def set_url(self, url: QUrl) -> None:
+        """
+        Shows the given :class:`QUrl` in the search bar.
+
+        :param url: The URL to show in the search bar.
+        :type url: QUrl
+        """
+        self._search_bar.setText(url.toDisplayString())
+
+    def set_webaction_state(self, webaction: WebPage.WebAction, state: bool) -> None:
+        """
+        Called whenever a :class:`WebPage.WebAction` like reload or back changes state.
+
+        :param webaction: The :class:`WebPage.WebAction` whose state changed.
+        :type webaction: WebPage.WebAction
+        :param state: The new state of the webaction; true is enabled, false is disabled.
+        :type state: bool
+        """
+        button = self._webactions.get(webaction)
+        if button is not None and isinstance(button, QToolButton):
+            button.setEnabled(state)
+
+    def _on_action_button_pressed(self) -> None:
+        """
+        Called whenever an action button is pressed. The sender's "action" property will hold the type of webaction to
+        send to the :class:`WebPage` based on which button was pressed.
+        """
+        webaction = self.sender().property("action")
+        if webaction is not None:
+            self.signal_webpage_action.emit(webaction)
+
+    def _on_return_pressed(self) -> None:
+        """
+        Signals that return was pressed with the :class:`QUrl` from the search bar at the time of the press.
+        """
+        url = QUrl.fromUserInput(self._search_bar.text())
+        if url is not None:
+            self.signal_return_pressed.emit(url)
 
     def _on_empty_trash_pressed(self) -> None:
         """

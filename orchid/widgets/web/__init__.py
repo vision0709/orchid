@@ -3,7 +3,8 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject, QUrl, QRect
 from PyQt5.QtWidgets import QWidget, QDialog, QMessageBox, QStyle, QAction, QLineEdit, QSizePolicy, QVBoxLayout
 from PyQt5.QtGui import QIcon, QContextMenuEvent
 from PyQt5.QtWebEngineCore import QWebEngineRegisterProtocolHandlerRequest
-from PyQt5.QtWebEngineWidgets import QWebEngineProfile, QWebEngineView, QWebEnginePage, QWebEngineCertificateError, QWebEngineClientCertificateSelection
+from PyQt5.QtWebEngineWidgets import (QWebEngineProfile, QWebEngineView, QWebEnginePage, QWebEngineCertificateError,
+                                      QWebEngineClientCertificateSelection)
 from PyQt5.QtNetwork import QAuthenticator
 
 
@@ -11,12 +12,6 @@ class WebPage(QWebEnginePage):
     """
     A :class:`QWebEnginePage` that positions common web page notifications correctly for :module:`orchid`.
     """
-
-    class WebAction(Enum):
-        Forward = QWebEnginePage.Forward
-        Back = QWebEnginePage.Back
-        Reload = QWebEnginePage.Reload
-        Stop = QWebEnginePage.Stop
 
     class RenderProcessTerminationStatus(Enum):
         NormalTerminationStatus = QWebEnginePage.NormalTerminationStatus
@@ -247,10 +242,10 @@ class WebView(QWebEngineView):
 
     def _on_webaction_changed(self, webaction: WebPage.WebAction, state: bool) -> None:
         """
-        Notifies listeners that a page's :class:`WebAction` has been enabled or disabled.
+        Notifies listeners that a page's :class:`WebPage.WebAction` has been enabled or disabled.
 
-        :param webaction: The :class:`WebAction` that was enabled to disabled.
-        :type webaction: WebAction
+        :param webaction: The :class:`WebPage.WebAction` that was enabled to disabled.
+        :type webaction: WebPage.WebAction
         :param state: True if the action was enabled, false if it was disabled.
         :type state: bool
         """
@@ -264,30 +259,30 @@ class WebView(QWebEngineView):
 
     def set_page(self, page: WebPage) -> None:
         """
-        Sets up signals for :class:`WebAction` changes and then sets this :class:`WebView`'s :class:`WebPage` to the given page.
+        Sets up signals for :class:`WebPage.WebAction` changes and then sets this :class:`WebView`'s :class:`WebPage` to the given page.
 
         :param page: The class:`WebPage` that this view should display.
         :type page: WebPage
         """
         # Forward webaction.
-        webaction = WebPage.WebAction.Forward
+        webaction = WebPage.Forward
         action = page.action(webaction)
-        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+        action.changed.connect(lambda webaction=webaction, state=action.isEnabled(): self._on_webaction_changed(webaction, state))
 
         # Back webaction.
-        webaction = WebPage.WebAction.Back
+        webaction = WebPage.Back
         action = page.action(webaction)
-        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+        action.changed.connect(lambda webaction=webaction, state=action.isEnabled(): self._on_webaction_changed(webaction, state))
 
         # Reload webaction.
-        webaction = WebPage.WebAction.Reload
+        webaction = WebPage.Reload
         action = page.action(webaction)
-        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+        action.changed.connect(lambda webaction=webaction, state=action.isEnabled(): self._on_webaction_changed(webaction, state))
 
         # Stop webaction.
-        webaction = WebPage.WebAction.Stop
+        webaction = WebPage.Stop
         action = page.action(webaction)
-        action.changed.connect(self._on_webaction_changed(webaction, action.isEnabled()))
+        action.changed.connect(lambda webaction=webaction, state=action.isEnabled(): self._on_webaction_changed(webaction, state))
 
         super().setPage(page)
 
@@ -302,11 +297,11 @@ class WebView(QWebEngineView):
 
     def is_webaction_enabled(self, webaction: WebPage.WebAction) -> bool:
         """
-        Returns the enabled state of the given WebAction.
+        Returns the enabled state of the given :class:`WebPage.WebAction`.
 
-        :param webaction: The WebAction whose enabled state is returned.
-        :type webaction: WebAction
-        :return: True if the given WebAction is enabled, false otherwise.
+        :param webaction: The :class:`WebPage.WebAction` whose enabled state is returned.
+        :type webaction: WebPage.WebAction
+        :return: True if the given :class:`WebPage.WebAction` is enabled, false otherwise.
         :rtype: bool
         """
         return self.page().action(webaction).isEnabled()
