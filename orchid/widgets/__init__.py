@@ -34,7 +34,6 @@ class TabWidget(QTabWidget):
         # Configure tab widget.
         self.setDocumentMode(True)
         self.setElideMode(Qt.ElideRight)  # Which side of the tab bar to overflow.
-        self.currentChanged.connect(self._on_current_tab_changed)
 
         self._profile = profile
         self._logger = getLogger(__name__)
@@ -85,7 +84,7 @@ class TabWidget(QTabWidget):
         # Create the new WebView and WebPage.
         webview = WebView(self)
         webpage = WebPage(self._profile, webview)
-        webview.setPage(webpage)
+        webview.set_page(webpage)
 
         # Listen for WebView changes.
         webview.titleChanged.connect(lambda title, webview=webview: self._on_webview_title_changed(title, webview))
@@ -373,19 +372,19 @@ class TabWidget(QTabWidget):
         if self.currentIndex() == index:
             self.signal_favicon_changed.emit(icon)
 
-    def _on_webview_webaction_state_changed(self, webaction: WebPage.WebAction, enabled: bool, webview: WebView) -> None:
+    def _on_webview_webaction_state_changed(self, webaction: WebPage.WebAction, state: bool, webview: WebView) -> None:
         """
         Notifies listeners of state changes in the given :class:`WebPage.WebAction`.
 
         :param webaction: The action that was changed.
         :type webaction: WebPage.WebAction
-        :param enabled: The current state of the action. If this is False then the action is disabled.
-        :type enabled: bool
+        :param state: The current state of the action. If this is False then the action is disabled.
+        :type state: bool
         :param webview: The :class:`WebView` whose :class:`WebPage` has an action whose state has changed.
         :type webview: WebView
         """
         if self.currentIndex() == self.indexOf(webview):
-            self.signal_webaction_state_changed.emit(webaction, enabled)
+            self.signal_webaction_state_changed.emit(webaction, state)
 
     def _on_webpage_link_hovered(self, url: str, webview: WebView) -> None:
         """

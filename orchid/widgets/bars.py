@@ -1,6 +1,7 @@
 from sys import exit
-from PyQt5.QtCore import QUrl, pyqtSignal
+from PyQt5.QtCore import QUrl, pyqtSignal, QDir
 from PyQt5.QtWidgets import QWidget, QToolBar, QToolButton, QSizePolicy, QLineEdit, QStyle, QMenu, QAction, QMessageBox
+from PyQt5.QtGui import QPaintEvent
 from orchid.widgets.web import WebPage
 
 
@@ -11,6 +12,8 @@ class SearchBar(QToolBar):
 
     signal_return_pressed = pyqtSignal(QUrl)
     signal_webpage_action = pyqtSignal(WebPage.WebAction)
+    signal_browser_home_pressed = pyqtSignal(QUrl)
+    signal_file_home_pressed = pyqtSignal(QUrl)
 
     def __init__(self, parent: QWidget = None) -> None:
         """
@@ -23,6 +26,7 @@ class SearchBar(QToolBar):
         tr = self.tr
 
         self._webactions = {}
+        self._percent = 0
 
         # Configure tool bar.
         self.setMovable(False)
@@ -47,7 +51,7 @@ class SearchBar(QToolBar):
         self.addWidget(button)
         self._webactions[WebPage.Forward] = button
 
-        # Refresh button.
+        # Stop/reload button.
         button = QToolButton(self)
         button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
         button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
@@ -56,12 +60,14 @@ class SearchBar(QToolBar):
         button.pressed.connect(self._on_action_button_pressed)
         self.addWidget(button)
         self._webactions[WebPage.Reload] = button
+        self._webactions[WebPage.Stop] = button
 
         # Browser home button.
         button = QToolButton(self)
         button.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
         button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         button.setToolTip(tr("Go to your homepage"))
+        button.pressed.connect(self._on_browser_home_pressed)
         self.addWidget(button)
 
         # Search bar.
@@ -77,6 +83,7 @@ class SearchBar(QToolBar):
         button.setIcon(self.style().standardIcon(QStyle.SP_DirHomeIcon))
         button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         button.setToolTip(tr("Go to your home folder"))
+        button.pressed.connect(self._on_file_home_pressed)
         self.addWidget(button)
 
         # Trash button.
@@ -129,9 +136,33 @@ class SearchBar(QToolBar):
         :param state: The new state of the webaction; true is enabled, false is disabled.
         :type state: bool
         """
-        button = self._webactions.get(webaction)
-        if button is not None and isinstance(button, QToolButton):
+        button = self._webactions.get(webaction, None)
+        if isinstance(button, QToolButton):
             button.setEnabled(state)
+            if state:
+                if webaction == WebPage.Reload:
+                    # Show the reload icon since reload is now enabled.
+                    button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+                    button.setToolTip(self.tr("Refresh page"))
+                    button.setProperty("action", WebPage.Reload)
+                elif webaction == WebPage.Stop:
+                    # Show the stop icon since stop is now enabled.
+                    button.setIcon(self.style().standardIcon(QStyle.SP_BrowserStop))
+                    button.setToolTip(self.tr("Stop loading page"))
+                    button.setProperty("action", WebPage.Stop)
+
+    def set_load_progress(self, progress: int) -> None:
+        """
+        Shows the current load percentage in the search bar.
+
+        :param progress: The current page load percentage.
+        :type progress: int
+        """
+        self._percent = progress
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        # TODO: Color portion of line edit equal to amount of page loaded.
 
     def _on_action_button_pressed(self) -> None:
         """
@@ -141,6 +172,21 @@ class SearchBar(QToolBar):
         webaction = self.sender().property("action")
         if webaction is not None:
             self.signal_webpage_action.emit(webaction)
+
+    def _on_browser_home_pressed(self) -> None:
+        """
+        Returns the current tab to the user's home page.
+        """
+        # TODO: Use user settings home path page here.
+        self.signal_browser_home_pressed.emit(QUrl("http://www.google.com"))
+
+    def _on_file_home_pressed(self) -> None:
+        """
+        Returns the current tab to the user's home folder.
+        """
+        # TODO: Use user settings home path here.
+        # TODO: Change the type of widget in the tab to something that views files.
+        self.signal_browser_home_pressed.emit(QUrl(QDir.homePath()))
 
     def _on_return_pressed(self) -> None:
         """

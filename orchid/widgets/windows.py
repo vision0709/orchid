@@ -73,7 +73,6 @@ class _DesktopWindow(QMainWindow):
 
         # Create the main area apps get drawn in.
         central_widget = TabWidget(QWebEngineProfile.defaultProfile(), self)
-        central_widget.create_tab()
         self.setCentralWidget(central_widget)
 
         # Create the top search bar that will manage the central widget.
@@ -96,9 +95,14 @@ class _DesktopWindow(QMainWindow):
             central_widget.signal_link_hovered.connect(self._on_link_hovered)
             central_widget.signal_url_changed.connect(search_bar.set_url)
             central_widget.signal_webaction_state_changed.connect(search_bar.set_webaction_state)
+            central_widget.signal_load_progress_changed.connect(search_bar.set_load_progress)
 
             search_bar.signal_return_pressed.connect(central_widget.set_url)
             search_bar.signal_webpage_action.connect(central_widget.trigger_webpage_action)
+            search_bar.signal_browser_home_pressed.connect(central_widget.set_url)
+            search_bar.signal_file_home_pressed.connect(central_widget.set_url)
+
+        central_widget.create_tab()
 
     def _on_link_hovered(self, url: str) -> None:
         """
