@@ -1,7 +1,6 @@
-from sys import argv, exit
+from sys import exit
 from platform import system as system_name
 from logging import getLogger, basicConfig, DEBUG
-from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QObject
 from orchid.widgets.windows import DesktopWindow
 from orchid.utils.theme import Themer
@@ -27,22 +26,15 @@ class DesktopEnvironment(QObject):
         """
         super().__init__()
 
-        # Create the Qt app.
-        self._app = QApplication(argv)
-        self._app.setApplicationName("Orchid")
-        self._app.setApplicationVersion("2019.6.4")
-        # TODO: self._app.setWindowIcon()
-
         # Configure loggers.
         basicConfig(level=DEBUG)
-        self.logger = getLogger(__name__)
+        self._logger = getLogger(__name__)
 
         # Theme the application.
         #Themer().apply_theme()
 
         # Create the desktop window.
         self._desktop = DesktopWindow()
-        self._desktop.show()
 
         # Create the window manager.
         #self._wm_thread = QThread()
@@ -52,14 +44,11 @@ class DesktopEnvironment(QObject):
         #self._wm.start()
         #self._wm_thread.start()
 
-    def run(self) -> int:
+    def run(self) -> None:
         """
         Startup the environment.
-        :return: The exit code of the app.
-        :rtype: int
         """
-        result = self._app.exec()
+        self._desktop.show()
         #self._wm.stop()
         #self._wm_thread.quit()
         #self._wm_thread.wait()
-        return result
